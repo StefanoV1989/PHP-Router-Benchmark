@@ -134,7 +134,12 @@ if (!\in_array($mode, ['quick', 'full'], true)) {
     exit(2);
 }
 
-putenv('ROUTER_BENCH_SIZES=' . ($mode === 'quick' ? '100' : '10,100,1000,10000'));
+$configuredSizes = getenv('ROUTER_BENCH_SIZES');
+putenv('ROUTER_BENCH_SIZES=' . (
+    $configuredSizes !== false && $configuredSizes !== ''
+        ? $configuredSizes
+        : ($mode === 'quick' ? '100' : '10,100,1000,10000')
+));
 $paths = $mode === 'quick'
     ? [
         'benchmarks/RegistrationBench.php',
@@ -175,12 +180,25 @@ $command = [
     '--php-config=' . json_encode($runtimeIni, JSON_THROW_ON_ERROR),
     '--dump-file=' . $prefix . '.xml',
     '--report=router_summary',
+    '--no-ansi',
 ];
 if ($mode === 'quick') {
     $command[] = '--iterations=3';
 }
-runCommand($command, $root);
-runCommand([PHP_BINARY, $root . '/bin/export-results', $prefix . '.xml'], $root);
+fwrite(STDOUT, "Run ID: {$runId}\n");
+fwrite(STDOUT, "Pending raw result: {$prefix}.xml\n");
+fwrite(STDOUT, "The Markdown/JSON/CSV files are created after PHPBench finishes.\n");
+if ($mode === 'full') {
+    fwrite(STDOUT, "Full mode can take a long time at 10,000 routes, especially for linear misses.\n");
+}
+$phpBenchStatus = runCommand($command, $root, false);
+if (is_file($prefix . '.xml')) {
+    runCommand([PHP_BINARY, $root . '/bin/export-results', $prefix . '.xml'], $root);
+}
+if ($phpBenchStatus !== 0) {
+    fwrite(STDERR, "PHPBench exited with status {$phpBenchStatus}; any completed XML data was exported.\n");
+    exit($phpBenchStatus);
+}
 
 if ($mode === 'full') {
     writeDiagnostics($prefix . '.memory.json', $root . '/bin/memory-worker', array_map(
@@ -204,7 +222,7 @@ fwrite(STDOUT, "Environment report: {$prefix}.environment.json\n");
 fwrite(STDOUT, "Markdown, JSON and CSV exports use prefix: {$prefix}\n");
 
 /** @param list<string> $command */
-function runCommand(array $command, string $workingDirectory): void
+function runCommand(array $command, string $workingDirectory, bool $exitOnFailure = true): int
 {
     $escaped = implode(' ', array_map(escapeshellarg(...), $command));
     $previous = getcwd();
@@ -213,9 +231,11 @@ function runCommand(array $command, string $workingDirectory): void
     if (\is_string($previous)) {
         chdir($previous);
     }
-    if ($status !== 0) {
+    if ($status !== 0 && $exitOnFailure) {
         exit($status);
     }
+
+    return $status;
 }
 
 /** @return list<int> */

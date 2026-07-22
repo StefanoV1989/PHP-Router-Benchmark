@@ -47,6 +47,14 @@ if (!$isMemory) {
             $value = (float) ($row[$metric] ?? 0.0);
             $prefixName = preg_replace('/_ns$/', '', $metric) ?? $metric;
             $row[$prefixName . '_ops_per_second'] = $value > 0.0 ? 1_000_000_000 / $value : null;
+            $isDispatch = \in_array($prefixName, ['first_dispatch', 'subsequent_dispatch'], true);
+            $row[$prefixName . '_requests_per_second'] = $isDispatch
+                ? $row[$prefixName . '_ops_per_second']
+                : null;
+            $row[$prefixName . '_requests_per_minute'] = $isDispatch
+                && $row[$prefixName . '_requests_per_second'] !== null
+                ? $row[$prefixName . '_requests_per_second'] * 60
+                : null;
             $row[$prefixName . '_relative'] = $value > 0.0 && isset($fastest[$size])
                 ? $value / $fastest[$size]
                 : null;
@@ -123,15 +131,21 @@ if ($isMemory) {
     ];
     foreach ($cacheScenarios as $key => [$title, $metric]) {
         $markdown .= '## ' . $title . "\n\n";
-        $markdown .= "| Router | Routes | Time ns/op | Ops/s | Relative | Cache format |\n";
-        $markdown .= "|---|---:|---:|---:|---:|---|\n";
+        $markdown .= "| Router | Routes | Time ns/op | Ops/s | Requests/s | Requests/min | Relative | Cache format |\n";
+        $markdown .= "|---|---:|---:|---:|---:|---:|---:|---|\n";
         foreach ($rows as $row) {
             $markdown .= \sprintf(
-                "| %s | %d | %.1f | %.0f | %.2fx | %s |\n",
+                "| %s | %d | %.1f | %.0f | %s | %s | %.2fx | %s |\n",
                 $row['router'],
                 $row['size'],
                 $row[$metric],
                 $row[$key . '_ops_per_second'],
+                $row[$key . '_requests_per_second'] === null
+                    ? 'n/a'
+                    : \sprintf('%.0f', $row[$key . '_requests_per_second']),
+                $row[$key . '_requests_per_minute'] === null
+                    ? 'n/a'
+                    : \sprintf('%.0f', $row[$key . '_requests_per_minute']),
                 $row[$key . '_relative'],
                 $row['cache_format'],
             );

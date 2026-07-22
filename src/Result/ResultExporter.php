@@ -19,6 +19,8 @@ namespace RouterBenchmarks\Result;
  *     stddev_ns: float,
  *     rsd_percent: float,
  *     ops_per_second: float|null,
+ *     requests_per_second: float|null,
+ *     requests_per_minute: float|null,
  *     relative: float|null,
  *     source: string
  * }
@@ -53,8 +55,11 @@ final class ResultExporter
                     $stats = $variant->stats;
                     $meanNs = (float) $stats['mean'] * $factor;
                     $detail = self::detail($parameters);
+                    $scenario = self::scenario($benchmarkName, $subjectName, $parameters);
+                    $operationsPerSecond = $meanNs > 0.0 ? 1_000_000_000 / $meanNs : null;
+                    $requestsPerSecond = self::isRequestScenario($scenario) ? $operationsPerSecond : null;
                     $rows[] = [
-                        'scenario' => self::scenario($benchmarkName, $subjectName, $parameters),
+                        'scenario' => $scenario,
                         'detail' => $detail,
                         'router' => $parameters['router'] ?? 'unknown',
                         'size' => isset($parameters['size']) ? (int) $parameters['size'] : null,
@@ -66,7 +71,9 @@ final class ResultExporter
                         'max_ns' => (float) $stats['max'] * $factor,
                         'stddev_ns' => (float) $stats['stdev'] * $factor,
                         'rsd_percent' => (float) $stats['rstdev'],
-                        'ops_per_second' => $meanNs > 0.0 ? 1_000_000_000 / $meanNs : null,
+                        'ops_per_second' => $operationsPerSecond,
+                        'requests_per_second' => $requestsPerSecond,
+                        'requests_per_minute' => $requestsPerSecond === null ? null : $requestsPerSecond * 60,
                         'relative' => null,
                         'source' => basename($file),
                     ];
@@ -116,23 +123,27 @@ final class ResultExporter
             $environment['runtime_target']['opcache.validate_timestamps'] ?? 'unknown',
             $environment['runtime_target']['error_reporting'] ?? 'unknown',
         ), \sprintf(
-            '%-24s | %-22s | %7s | %12s | %12s | %10s',
+            '%-24s | %-22s | %7s | %12s | %12s | %12s | %14s | %10s',
             'Scenario',
             'Router',
             'Routes',
             'Median ns',
             'Ops/s',
+            'Requests/s',
+            'Requests/min',
             'Relative',
         )];
-        $lines[] = str_repeat('-', 100);
+        $lines[] = str_repeat('-', 132);
         foreach ($rows as $row) {
             $lines[] = \sprintf(
-                '%-24s | %-22s | %7s | %12.1f | %12.0f | %9.2fx',
+                '%-24s | %-22s | %7s | %12.1f | %12.0f | %12s | %14s | %9.2fx',
                 substr((string) $row['scenario'], 0, 24),
                 substr((string) $row['router'], 0, 22),
                 (string) ($row['size'] ?? '-'),
                 (float) $row['median_ns'],
                 (float) ($row['ops_per_second'] ?? 0),
+                $row['requests_per_second'] === null ? 'n/a' : \sprintf('%.0f', $row['requests_per_second']),
+                $row['requests_per_minute'] === null ? 'n/a' : \sprintf('%.0f', $row['requests_per_minute']),
                 (float) ($row['relative'] ?? 0),
             );
         }
@@ -212,11 +223,11 @@ final class ResultExporter
         }
         foreach ($grouped as $scenario => $scenarioRows) {
             $output .= '## ' . ucwords(str_replace('_', ' ', $scenario)) . "\n\n";
-            $output .= "| Router | Routes | Detail | Median ns/op | Mean ns/op | Min | Max | Stddev | RSD | Ops/s | Relative |\n";
-            $output .= "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|\n";
+            $output .= "| Router | Routes | Detail | Median ns/op | Mean ns/op | Min | Max | Stddev | RSD | Ops/s | Requests/s | Requests/min | Relative |\n";
+            $output .= "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n";
             foreach ($scenarioRows as $row) {
                 $output .= \sprintf(
-                    "| %s | %s | %s | %.1f | %.1f | %.1f | %.1f | %.1f | %.2f%% | %.0f | %.2fx |\n",
+                    "| %s | %s | %s | %.1f | %.1f | %.1f | %.1f | %.1f | %.2f%% | %.0f | %s | %s | %.2fx |\n",
                     $row['router'],
                     $row['size'] ?? 'n/a',
                     $row['detail'] === '' ? 'default' : $row['detail'],
@@ -227,6 +238,12 @@ final class ResultExporter
                     $row['stddev_ns'],
                     $row['rsd_percent'],
                     $row['ops_per_second'],
+                    $row['requests_per_second'] === null
+                        ? 'n/a'
+                        : \sprintf('%.0f', $row['requests_per_second']),
+                    $row['requests_per_minute'] === null
+                        ? 'n/a'
+                        : \sprintf('%.0f', $row['requests_per_minute']),
                     $row['relative'],
                 );
             }
@@ -296,6 +313,17 @@ final class ResultExporter
             'nanoseconds' => 1,
             default => 1_000,
         };
+    }
+
+    private static function isRequestScenario(string $scenario): bool
+    {
+        return !\in_array($scenario, [
+            'registration',
+            'compilation',
+            'finalization',
+            'memory_diagnostic',
+            'cache_load',
+        ], true);
     }
 
     /**

@@ -105,6 +105,14 @@ composer benchmark:cache       # fresh generation and fresh loading processes
 composer benchmark:export      # re-export the newest PHPBench XML
 ```
 
+The Composer process timeout is disabled for benchmark scripts because a complete 10,000-route run can legitimately exceed five minutes. The runner prints the run ID and pending XML path before PHPBench starts, uses non-ANSI progress output, and creates Markdown/JSON/CSV after measurement completes. Do not close the terminal or terminate the process before the final export message.
+
+For an end-to-end full-pipeline smoke test without the expensive large datasets, override the sizes explicitly:
+
+```bash
+ROUTER_BENCH_SIZES=10 php bin/benchmark full
+```
+
 Equivalent `make` targets are `make verify`, `make benchmark-quick`, `make benchmark-full`, `make benchmark-memory`, and `make benchmark-cache`.
 
 Runtime profiles must be run and reported separately:
@@ -173,6 +181,8 @@ Each PHPBench run creates:
 Memory and cache commands create their own JSON, CSV, Markdown, and console reports. Markdown keeps registration, compilation, finalization, cold start, warm static match, warm dynamic/multiple match, constrained match, route miss, 405, full dispatch, direct-call, memory, and cache lifecycle separate. Slow or unfavorable rows are not filtered.
 
 Time differences smaller than run-to-run noise or with high RSD are not a reliable conclusion. Registration, cold start, matching, dispatch, memory, and caches answer different questions. A claim about one must be scoped to that exact dataset size, route shape, runtime profile, execution environment, and software revision.
+
+Request scenarios report both requests/second and requests/minute, calculated from the mean single-operation time. These are single-process routing-operation estimates, not HTTP-server capacity: they exclude network I/O, worker scheduling, application bootstrap outside the stated boundary, middleware, controllers, and concurrent load. Registration, compilation and finalization retain operations/second but correctly report request rates as not applicable.
 
 ### Smoke-output example
 
