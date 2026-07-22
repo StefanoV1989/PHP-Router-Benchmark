@@ -1,0 +1,350 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
+$root = \dirname(__DIR__);
+$input = $argv[1] ?? null;
+if (!\is_string($input)) {
+    $files = array_values(array_filter(
+        glob($root . '/results/*-full-*.json') ?: [],
+        static fn (string $file): bool => !str_contains($file, '.cache.')
+            && !str_contains($file, '.memory.')
+            && !str_contains($file, '.environment.'),
+    ));
+    usort($files, static fn (string $left, string $right): int => filemtime($right) <=> filemtime($left));
+    $input = $files[0] ?? null;
+}
+if (!\is_string($input) || !is_file($input)) {
+    fwrite(STDERR, "No full benchmark JSON result found. Pass its path explicitly.\n");
+    exit(2);
+}
+
+$input = realpath($input) ?: $input;
+$prefix = preg_replace('/\.json$/', '', $input);
+if (!\is_string($prefix)) {
+    throw new RuntimeException('Unable to determine result prefix.');
+}
+$cacheFile = $prefix . '.cache.json';
+$memoryFile = $prefix . '.memory.json';
+if (!is_file($cacheFile) || !is_file($memoryFile)) {
+    throw new RuntimeException('The matching cache and memory JSON reports are required.');
+}
+
+$main = loadDocument($input);
+$cache = loadDocument($cacheFile);
+$memory = loadDocument($memoryFile);
+$environment = $main['environment'];
+$mainRows = $main['results'];
+$cacheRows = $cache['results'];
+$memoryRows = $memory['results'];
+$sizes = array_values(array_unique(array_map(static fn (array $row): int => (int) $row['size'], $mainRows)));
+sort($sizes);
+
+$output = "# Elaborated benchmark results\n\n";
+$output .= '> This report compares only measurements from the same run. It does not calculate a universal winner by '
+    . "averaging unrelated latency, lifecycle, cache and memory metrics.\n\n";
+$output .= \sprintf(
+    "Source run: `%s`; PHP `%s`; runtime `%s`; execution `%s`; project commit `%s`; dirty `%s`; dataset seed `%s`.\n\n",
+    $environment['run']['id'] ?? basename($prefix),
+    $environment['php']['version'] ?? 'unknown',
+    $environment['run']['runtime_profile'] ?? 'unknown',
+    $environment['execution_environment'] ?? 'unknown',
+    $environment['project']['commit'] ?? 'unknown',
+    ($environment['project']['dirty'] ?? true) ? 'yes' : 'no',
+    $environment['project']['dataset_seed'] ?? 'unknown',
+);
+$output .= "The aggregate score is the geometric mean of each router's latency ratio to the fastest router in every "
+    . 'comparable cohort. It is then normalized so the best aggregate is 1.00x. Lower is better. This avoids allowing '
+    . 'a single very large timing to dominate an arithmetic mean. Only routers present in every cohort of a comparison '
+    . "are ranked.\n\n";
+
+$output .= "## Router versions\n\n";
+$output .= "| Router | Package | Version | Commit |\n|---|---|---:|---|\n";
+foreach ($environment['routers'] ?? [] as $router) {
+    $output .= \sprintf(
+        "| %s | `%s` | `%s` | `%s` |\n",
+        $router['name'],
+        $router['package'],
+        $router['version'],
+        $router['commit'],
+    );
+}
+
+$fullRows = rowsForScenario($mainRows, 'full_dispatch');
+$lightSizes = array_values(array_intersect($sizes, [10, 100]));
+$heavySizes = array_values(array_intersect($sizes, [1000, 10000]));
+$lightRank = aggregateRanking($fullRows, 'mean_ns', $lightSizes);
+$heavyRank = aggregateRanking($fullRows, 'mean_ns', $heavySizes);
+$allDispatchRank = aggregateRanking($fullRows, 'mean_ns', $sizes);
+$lightWinner = $lightRank[0]['router'] ?? 'n/a';
+$heavyWinner = $heavyRank[0]['router'] ?? 'n/a';
+
+$output .= "\n## Practical reading\n\n";
+if ($lightRank !== [] && $heavyRank !== [] && $lightWinner === $heavyWinner) {
+    $output .= \sprintf(
+        'For normalized full dispatch, **%s** has the lowest geometric-mean latency ratio in both the small '
+            . "(10/100 routes) and heavy (1,000/10,000 routes) groups.\n\n",
+        $lightWinner,
+    );
+} elseif ($lightRank !== [] && $heavyRank !== []) {
+    $output .= \sprintf(
+        'For normalized full dispatch, **%s** leads the small 10/100-route group, while **%s** leads the '
+            . '1,000/10,000-route group. This is the clearest indication in this run that the preferred router can '
+            . "change with route-table size.\n\n",
+        $lightWinner,
+        $heavyWinner,
+    );
+} else {
+    $availableRank = $lightRank !== [] ? $lightRank : $heavyRank;
+    $output .= \sprintf(
+        'For normalized full dispatch, **%s** has the lowest geometric-mean latency ratio across the route-table '
+            . 'sizes available in this reduced run. A complete 10/100/1,000/10,000 run is required for the small '
+            . "versus heavy comparison.\n\n",
+        $availableRank[0]['router'] ?? 'n/a',
+    );
+}
+$output .= 'Handler-free matching, native full dispatch, registration, compilation, cache lifecycle and memory are '
+    . 'reported separately below because they answer different questions. Bramus Router and Simple PHP Router are not '
+    . "included in handler-free matching rankings because that operation is unsupported.\n\n";
+
+$output .= "## Normalized full dispatch\n\n";
+$output .= 'This is the common adapter path including parameter extraction and equivalent handler invocation. For '
+    . "AltoRouter, Symfony Routing and FastRoute, invocation is adapter-managed after native matching.\n\n";
+$output .= "| Routes | Winner | Mean ns/op | Requests/s | Relative |\n|---:|---|---:|---:|---:|\n";
+foreach ($sizes as $size) {
+    $rows = array_values(array_filter($fullRows, static fn (array $row): bool => $row['size'] === $size));
+    usort($rows, static fn (array $left, array $right): int => $left['mean_ns'] <=> $right['mean_ns']);
+    $winner = $rows[0];
+    $output .= \sprintf(
+        "| %s | **%s** | %.1f | %.0f | 1.00x |\n",
+        number_format($size),
+        $winner['router'],
+        $winner['mean_ns'],
+        $winner['requests_per_second'],
+    );
+}
+
+$output .= "\n### Average across " . implode(', ', array_map(number_format(...), $sizes)) . " routes\n\n";
+$output .= rankingTable($allDispatchRank);
+if ($lightRank !== []) {
+    $output .= "\n### Small route tables: " . implode(' and ', array_map(number_format(...), $lightSizes))
+        . " routes\n\n";
+    $output .= rankingTable($lightRank);
+}
+if ($heavyRank !== []) {
+    $output .= "\n### Heavy route tables: " . implode(' and ', array_map(number_format(...), $heavySizes))
+        . " routes\n\n";
+    $output .= rankingTable($heavyRank);
+}
+
+$scenarioTitles = [
+    'warm_static_match' => 'Warm static match',
+    'warm_dynamic_match' => 'Warm single-parameter match',
+    'warm_multiple_parameter_match' => 'Warm multiple-parameter match',
+    'constrained_match' => 'Constrained match',
+    'overlapping_static_dynamic_match' => 'Overlapping static/dynamic match',
+    'route_miss' => 'Route miss',
+    'method_not_allowed' => 'Method not allowed',
+    'native_match' => 'Native direct-call match',
+    'native_full_dispatch' => 'Native direct-call full dispatch',
+];
+$output .= "\n## Scenario leaders by route-table size\n\n";
+$output .= "Each cell is the leader after aggregating only the details inside that scenario and route count.\n\n";
+$output .= '| Scenario | ' . implode(' | ', array_map(static fn (int $size): string => number_format($size), $sizes))
+    . " | Four-size average | Score |\n";
+$output .= '|---|' . str_repeat('---:|', \count($sizes)) . "---|---:|\n";
+foreach ($scenarioTitles as $scenario => $title) {
+    $scenarioRows = rowsForScenario($mainRows, $scenario);
+    if ($scenarioRows === []) {
+        continue;
+    }
+    $cells = [];
+    foreach ($sizes as $size) {
+        $ranking = aggregateRanking($scenarioRows, 'mean_ns', [$size]);
+        $cells[] = isset($ranking[0]) ? '**' . $ranking[0]['router'] . '**' : 'n/a';
+    }
+    $ranking = aggregateRanking($scenarioRows, 'mean_ns', $sizes);
+    $output .= \sprintf(
+        "| %s | %s | **%s** | %.2fx |\n",
+        $title,
+        implode(' | ', $cells),
+        $ranking[0]['router'] ?? 'n/a',
+        $ranking[0]['score'] ?? 0.0,
+    );
+}
+
+$output .= "\n## Lifecycle averages\n\n";
+$output .= 'Registration, compilation and Simple PHP Router finalization remain separate. A missing router means that '
+    . "the phase is not applicable, not that its cost is zero.\n\n";
+$output .= "| Phase | Aggregate leader | Aggregate score | Participants |\n|---|---|---:|---:|\n";
+foreach (['registration', 'compilation', 'finalization', 'cold_start'] as $scenario) {
+    $ranking = aggregateRanking(rowsForScenario($mainRows, $scenario), 'mean_ns', $sizes);
+    $output .= \sprintf(
+        "| %s | **%s** | %.2fx | %d |\n",
+        ucwords(str_replace('_', ' ', $scenario)),
+        $ranking[0]['router'] ?? 'n/a',
+        $ranking[0]['score'] ?? 0.0,
+        \count($ranking),
+    );
+}
+
+$output .= "\n## Native cache lifecycle averages\n\n";
+$output .= 'Only routers with a documented native compiled-cache lifecycle participate. Cache formats are not assumed '
+    . "to have equivalent generation or loading mechanics.\n\n";
+$output .= '| Metric | ' . implode(' | ', array_map(static fn (int $size): string => number_format($size), $sizes))
+    . " | Four-size average | Score |\n";
+$output .= '|---|' . str_repeat('---:|', \count($sizes)) . "---|---:|\n";
+foreach ([
+    'generation_ns' => 'Cache generation',
+    'load_ns' => 'Cache load',
+    'first_dispatch_ns' => 'First dispatch after load',
+    'subsequent_dispatch_ns' => 'Subsequent cached dispatch',
+    'cache_file_bytes' => 'Cache file size',
+] as $metric => $title) {
+    $cells = [];
+    foreach ($sizes as $size) {
+        $sizeRanking = aggregateRanking($cacheRows, $metric, [$size]);
+        $cells[] = isset($sizeRanking[0]) ? '**' . $sizeRanking[0]['router'] . '**' : 'n/a';
+    }
+    $ranking = aggregateRanking($cacheRows, $metric, $sizes);
+    $output .= \sprintf(
+        "| %s | %s | **%s** | %.2fx |\n",
+        $title,
+        implode(' | ', $cells),
+        $ranking[0]['router'] ?? 'n/a',
+        $ranking[0]['score'] ?? 0.0,
+    );
+}
+
+$output .= "\n## Memory averages\n\n";
+$output .= 'Memory rankings use isolated worker processes. Lower is better. Finalized memory is excluded from this '
+    . "summary because AltoRouter and Bramus Router have no finalization phase.\n\n";
+$output .= '| Metric | ' . implode(' | ', array_map(static fn (int $size): string => number_format($size), $sizes))
+    . " | Four-size average | Score |\n";
+$output .= '|---|' . str_repeat('---:|', \count($sizes)) . "---|---:|\n";
+foreach ([
+    'empty_bytes' => 'Empty router memory',
+    'registration_delta_bytes' => 'Registration memory delta',
+    'peak_bytes' => 'Peak memory',
+] as $metric => $title) {
+    $cells = [];
+    foreach ($sizes as $size) {
+        $sizeRanking = aggregateRanking($memoryRows, $metric, [$size]);
+        $cells[] = isset($sizeRanking[0]) ? '**' . $sizeRanking[0]['router'] . '**' : 'n/a';
+    }
+    $ranking = aggregateRanking($memoryRows, $metric, $sizes);
+    $output .= \sprintf(
+        "| %s | %s | **%s** | %.2fx |\n",
+        $title,
+        implode(' | ', $cells),
+        $ranking[0]['router'] ?? 'n/a',
+        $ranking[0]['score'] ?? 0.0,
+    );
+}
+
+$output .= "\n## Interpretation limits\n\n";
+$output .= '- Requests per second are single-process routing-operation estimates (`1e9 / mean ns`), not HTTP server '
+    . "capacity. They exclude web-server, networking and application work.\n"
+    . "- Aggregate scores compare scaling within one metric family. They must not be combined into a universal score.\n"
+    . "- A result near another router's value should be read together with RSD and repeated on the target host.\n"
+    . "- Unsupported operations and non-equivalent cache architectures remain excluded rather than approximated.\n\n";
+$output .= 'Raw readable reports: [`' . basename($prefix) . '.md`](results/' . basename($prefix) . '.md), '
+    . '[`' . basename($prefix) . '.cache.md`](results/' . basename($prefix) . '.cache.md), and '
+    . '[`' . basename($prefix) . '.memory.md`](results/' . basename($prefix) . ".memory.md).\n";
+
+$destination = $argv[2] ?? $root . '/BENCHMARK_RESULTS.md';
+file_put_contents($destination, $output, LOCK_EX);
+fwrite(STDOUT, "Elaborated report: {$destination}\n");
+
+/** @return array{environment: array<string, mixed>, results: list<array<string, mixed>>} */
+function loadDocument(string $file): array
+{
+    $document = json_decode((string) file_get_contents($file), true, flags: JSON_THROW_ON_ERROR);
+    if (!\is_array($document) || !\is_array($document['environment'] ?? null) || !\is_array($document['results'] ?? null)) {
+        throw new RuntimeException('Invalid benchmark document: ' . $file);
+    }
+
+    return ['environment' => $document['environment'], 'results' => array_values($document['results'])];
+}
+
+/**
+ * @param list<array<string, mixed>> $rows
+ * @return list<array<string, mixed>>
+ */
+function rowsForScenario(array $rows, string $scenario): array
+{
+    return array_values(array_filter(
+        $rows,
+        static fn (array $row): bool => ($row['scenario'] ?? null) === $scenario,
+    ));
+}
+
+/**
+ * @param list<array<string, mixed>> $rows
+ * @param list<int> $sizes
+ * @return list<array{router: string, score: float, cohorts: int}>
+ */
+function aggregateRanking(array $rows, string $metric, array $sizes): array
+{
+    $rows = array_values(array_filter($rows, static function (array $row) use ($metric, $sizes): bool {
+        return \in_array((int) ($row['size'] ?? 0), $sizes, true)
+            && isset($row[$metric])
+            && is_numeric($row[$metric])
+            && (float) $row[$metric] > 0.0;
+    }));
+    $cohorts = [];
+    foreach ($rows as $row) {
+        $key = (string) $row['size'] . '|' . (string) ($row['detail'] ?? '');
+        $value = (float) $row[$metric];
+        $cohorts[$key] = isset($cohorts[$key]) ? min($cohorts[$key], $value) : $value;
+    }
+    if ($cohorts === []) {
+        return [];
+    }
+
+    $scores = [];
+    foreach ($rows as $row) {
+        $key = (string) $row['size'] . '|' . (string) ($row['detail'] ?? '');
+        $router = (string) $row['router'];
+        $scores[$router][] = (float) $row[$metric] / $cohorts[$key];
+    }
+    $ranking = [];
+    foreach ($scores as $router => $ratios) {
+        if (\count($ratios) !== \count($cohorts)) {
+            continue;
+        }
+        $ranking[] = [
+            'router' => $router,
+            'score' => exp(array_sum(array_map(log(...), $ratios)) / \count($ratios)),
+            'cohorts' => \count($ratios),
+        ];
+    }
+    usort($ranking, static fn (array $left, array $right): int => $left['score'] <=> $right['score']);
+    $best = (float) ($ranking[0]['score'] ?? 1.0);
+    foreach ($ranking as &$row) {
+        $row['score'] /= $best;
+    }
+    unset($row);
+
+    return $ranking;
+}
+
+/** @param list<array{router: string, score: float, cohorts: int}> $ranking */
+function rankingTable(array $ranking): string
+{
+    $output = "| Rank | Router | Geometric-mean relative latency | Cohorts |\n|---:|---|---:|---:|\n";
+    foreach ($ranking as $index => $row) {
+        $output .= \sprintf(
+            "| %d | %s | %.2fx | %d |\n",
+            $index + 1,
+            $index === 0 ? '**' . $row['router'] . '**' : $row['router'],
+            $row['score'],
+            $row['cohorts'],
+        );
+    }
+
+    return $output;
+}

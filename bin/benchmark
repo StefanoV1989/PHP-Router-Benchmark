@@ -215,6 +215,7 @@ if ($mode === 'full') {
     );
     runCommand([PHP_BINARY, $root . '/bin/export-diagnostics', $prefix . '.memory.json'], $root);
     runCommand([PHP_BINARY, $root . '/bin/export-diagnostics', $prefix . '.cache.json'], $root);
+    runCommand([PHP_BINARY, $root . '/bin/summarize-results', $prefix . '.json'], $root);
 }
 
 fwrite(STDOUT, "Raw PHPBench result: {$prefix}.xml\n");

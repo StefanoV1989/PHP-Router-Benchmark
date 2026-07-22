@@ -13,6 +13,7 @@ $finder = Finder::create()
         __DIR__ . '/bin/verify',
         __DIR__ . '/bin/export-results',
         __DIR__ . '/bin/export-diagnostics',
+        __DIR__ . '/bin/summarize-results',
         __DIR__ . '/bin/memory-worker',
         __DIR__ . '/bin/cache-worker',
     ]);

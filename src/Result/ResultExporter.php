@@ -81,7 +81,7 @@ final class ResultExporter
             }
         }
 
-        return self::addRelative($rows);
+        return self::sortRows(self::addRelative($rows));
     }
 
     /**
@@ -215,7 +215,9 @@ final class ResultExporter
             $environment['runtime_target']['opcache.validate_timestamps'] ?? 'unknown',
             $environment['runtime_target']['error_reporting'] ?? 'unknown',
         );
-        $output .= "Relative values are calculated only within the same scenario, detail and route count; 1.00x is fastest. No overall winner is calculated.\n\n";
+        $output .= 'Relative values are calculated only within the same scenario, detail and route count; 1.00x is fastest. '
+            . 'Rows are ordered by mean time inside each comparable group. A green value on a later row is better than '
+            . "the 1.00x row for that individual column. No overall winner is calculated.\n\n";
 
         $grouped = [];
         foreach ($rows as $row) {
@@ -225,26 +227,55 @@ final class ResultExporter
             $output .= '## ' . ucwords(str_replace('_', ' ', $scenario)) . "\n\n";
             $output .= "| Router | Routes | Detail | Median ns/op | Mean ns/op | Min | Max | Stddev | RSD | Ops/s | Requests/s | Requests/min | Relative |\n";
             $output .= "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n";
+            $baseline = null;
+            $cohort = null;
             foreach ($scenarioRows as $row) {
+                $rowCohort = self::cohortKey($row);
+                if ($rowCohort !== $cohort) {
+                    $cohort = $rowCohort;
+                    $baseline = $row;
+                }
+                if ($baseline === null) {
+                    throw new \LogicException('Missing benchmark cohort baseline.');
+                }
+                $winner = $row['router'] === $baseline['router'];
                 $output .= \sprintf(
-                    "| %s | %s | %s | %.1f | %.1f | %.1f | %.1f | %.1f | %.2f%% | %.0f | %s | %s | %.2fx |\n",
-                    $row['router'],
+                    "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+                    $winner ? '**' . $row['router'] . '**' : $row['router'],
                     $row['size'] ?? 'n/a',
                     $row['detail'] === '' ? 'default' : $row['detail'],
-                    $row['median_ns'],
-                    $row['mean_ns'],
-                    $row['min_ns'],
-                    $row['max_ns'],
-                    $row['stddev_ns'],
-                    $row['rsd_percent'],
-                    $row['ops_per_second'],
+                    self::metric('%.1f', $row['median_ns'], $baseline['median_ns'], false, $winner),
+                    self::metric('%.1f', $row['mean_ns'], $baseline['mean_ns'], false, $winner),
+                    self::metric('%.1f', $row['min_ns'], $baseline['min_ns'], false, $winner),
+                    self::metric('%.1f', $row['max_ns'], $baseline['max_ns'], false, $winner),
+                    self::metric('%.1f', $row['stddev_ns'], $baseline['stddev_ns'], false, $winner),
+                    self::metric('%.2f%%', $row['rsd_percent'], $baseline['rsd_percent'], false, $winner),
+                    self::metric(
+                        '%.0f',
+                        (float) $row['ops_per_second'],
+                        (float) $baseline['ops_per_second'],
+                        true,
+                        $winner,
+                    ),
                     $row['requests_per_second'] === null
                         ? 'n/a'
-                        : \sprintf('%.0f', $row['requests_per_second']),
+                        : self::metric(
+                            '%.0f',
+                            $row['requests_per_second'],
+                            (float) $baseline['requests_per_second'],
+                            true,
+                            $winner,
+                        ),
                     $row['requests_per_minute'] === null
                         ? 'n/a'
-                        : \sprintf('%.0f', $row['requests_per_minute']),
-                    $row['relative'],
+                        : self::metric(
+                            '%.0f',
+                            $row['requests_per_minute'],
+                            (float) $baseline['requests_per_minute'],
+                            true,
+                            $winner,
+                        ),
+                    \sprintf('%.2fx', $row['relative']),
                 );
             }
             $output .= "\n";
@@ -345,5 +376,40 @@ final class ResultExporter
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * @param list<ResultRow> $rows
+     * @return list<ResultRow>
+     */
+    private static function sortRows(array $rows): array
+    {
+        usort($rows, static function (array $left, array $right): int {
+            return [$left['scenario'], $left['size'] ?? -1, $left['detail'], $left['mean_ns'], $left['router']]
+                <=> [$right['scenario'], $right['size'] ?? -1, $right['detail'], $right['mean_ns'], $right['router']];
+        });
+
+        return $rows;
+    }
+
+    /** @param ResultRow $row */
+    private static function cohortKey(array $row): string
+    {
+        return $row['scenario'] . '|' . ($row['size'] ?? 'n/a') . '|' . $row['detail'];
+    }
+
+    private static function metric(
+        string $format,
+        float $value,
+        float $baseline,
+        bool $higherIsBetter,
+        bool $isBaseline,
+    ): string {
+        $formatted = \sprintf($format, $value);
+        $isBetter = $higherIsBetter ? $value > $baseline : $value < $baseline;
+
+        return !$isBaseline && $isBetter
+            ? '<span style="color: #16833b;">' . $formatted . '</span>'
+            : $formatted;
     }
 }

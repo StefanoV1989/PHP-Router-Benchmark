@@ -103,6 +103,7 @@ composer benchmark:full        # 10, 100, 1,000, and 10,000 routes plus isolated
 composer benchmark:memory      # isolated process for every router and size
 composer benchmark:cache       # fresh generation and fresh loading processes
 composer benchmark:export      # re-export the newest PHPBench XML
+composer benchmark:summary     # rebuild BENCHMARK_RESULTS.md from the newest full run
 ```
 
 The Composer process timeout is disabled for benchmark scripts because a complete 10,000-route run can legitimately exceed five minutes. The runner prints the run ID and pending XML path before PHPBench starts, uses non-ANSI progress output, and creates Markdown/JSON/CSV after measurement completes. Do not close the terminal or terminate the process before the final export message.
@@ -113,7 +114,7 @@ For an end-to-end full-pipeline smoke test without the expensive large datasets,
 ROUTER_BENCH_SIZES=10 php bin/benchmark full
 ```
 
-Equivalent `make` targets are `make verify`, `make benchmark-quick`, `make benchmark-full`, `make benchmark-memory`, and `make benchmark-cache`.
+Equivalent `make` targets are `make verify`, `make benchmark-quick`, `make benchmark-full`, `make benchmark-memory`, `make benchmark-cache`, and `make benchmark-summary`.
 
 Runtime profiles must be run and reported separately:
 
@@ -176,9 +177,11 @@ Each PHPBench run creates:
 - `.json`: normalized rows plus environment;
 - `.csv`: flat rows with runtime metadata on every row;
 - `.md`: separate scenario tables with absolute and relative measurements;
-- console table: scenario, router, routes, median, operations/second, and relative value.
+- console table: scenario, router, routes, median, operations/second, request rates, and relative value.
 
-Memory and cache commands create their own JSON, CSV, Markdown, and console reports. Markdown keeps registration, compilation, finalization, cold start, warm static match, warm dynamic/multiple match, constrained match, route miss, 405, full dispatch, direct-call, memory, and cache lifecycle separate. Slow or unfavorable rows are not filtered.
+Memory and cache commands create their own JSON, CSV, Markdown, and console reports. Markdown keeps registration, compilation, finalization, cold start, warm static match, warm dynamic/multiple match, constrained match, route miss, 405, full dispatch, direct-call, memory, and cache lifecycle separate. Inside every comparable route-count/detail group, rows are ordered by mean time with the 1.00x row first. A later-row value that beats the first row in an individual column is rendered green using inline HTML. Slow or unfavorable rows are not filtered.
+
+A successful full run also rebuilds `BENCHMARK_RESULTS.md` in the repository root. It reports per-size leaders, separate 10/100-route and 1,000/10,000-route readings, and geometric-mean rankings within individual scenario families. Cache and memory summaries remain separate; the tool deliberately does not combine unrelated metrics into a universal winner. Run `composer benchmark:summary` to rebuild it from the newest complete full result.
 
 Time differences smaller than run-to-run noise or with high RSD are not a reliable conclusion. Registration, cold start, matching, dispatch, memory, and caches answer different questions. A claim about one must be scoped to that exact dataset size, route shape, runtime profile, execution environment, and software revision.
 

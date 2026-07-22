@@ -41,6 +41,7 @@
         "benchmark:memory": "@php bin/benchmark memory",
         "benchmark:cache": "@php bin/benchmark cache",
         "benchmark:export": "@php bin/export-results",
+        "benchmark:summary": "@php bin/summarize-results",
         "verify": "@php bin/verify"
     },
     "config": {

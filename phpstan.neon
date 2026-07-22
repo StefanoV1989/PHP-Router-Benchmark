@@ -8,6 +8,7 @@ parameters:
         - bin/cache-worker
         - bin/export-diagnostics
         - bin/export-results
+        - bin/summarize-results
         - bin/memory-worker
         - bin/verify
     tmpDir: .phpstan.cache

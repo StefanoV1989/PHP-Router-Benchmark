@@ -1,4 +1,4 @@
-.PHONY: install test analyse format format-check verify benchmark benchmark-quick benchmark-full benchmark-memory benchmark-cache benchmark-export docker-build docker-verify docker-benchmark
+.PHONY: install test analyse format format-check verify benchmark benchmark-quick benchmark-full benchmark-memory benchmark-cache benchmark-export benchmark-summary docker-build docker-verify docker-benchmark
 
 install:
 	composer install --no-interaction --prefer-dist
@@ -34,6 +34,9 @@ benchmark-cache:
 
 benchmark-export:
 	composer benchmark:export
+
+benchmark-summary:
+	composer benchmark:summary
 
 docker-build:
 	docker build -t php-router-benchmarks .
