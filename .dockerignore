@@ -1,0 +1,7 @@
+.git
+.github
+.php-cs-fixer.cache
+.phpstan.cache
+.phpunit.cache
+results/*
+vendor

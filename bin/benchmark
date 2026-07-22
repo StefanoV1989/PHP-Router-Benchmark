@@ -1,0 +1,363 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use RouterBenchmarks\Support\AdapterRegistry;
+use RouterBenchmarks\Support\EnvironmentCollector;
+use RouterBenchmarks\Support\NativeCacheLifecycle;
+
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
+$root = \dirname(__DIR__);
+require $root . '/vendor/autoload.php';
+
+$mode = $argv[1] ?? 'quick';
+$runtime = 'opcache';
+$skipVerify = false;
+foreach (\array_slice($argv, 2) as $argument) {
+    if (str_starts_with($argument, '--runtime=')) {
+        $runtime = substr($argument, \strlen('--runtime='));
+    } elseif ($argument === '--skip-verify') {
+        $skipVerify = true;
+    }
+}
+
+$runtimeIni = match ($runtime) {
+    'opcache' => [
+        'opcache.enable' => 1,
+        'opcache.enable_cli' => 1,
+        'opcache.jit' => 0,
+        'opcache.jit_buffer_size' => 0,
+        'opcache.memory_consumption' => 128,
+        'opcache.validate_timestamps' => 0,
+        'error_reporting' => 8191,
+        'display_errors' => 1,
+    ],
+    'opcache-off' => [
+        'opcache.enable' => 0,
+        'opcache.enable_cli' => 0,
+        'opcache.jit' => 0,
+        'opcache.jit_buffer_size' => 0,
+        'opcache.memory_consumption' => 128,
+        'opcache.validate_timestamps' => 0,
+        'error_reporting' => 8191,
+        'display_errors' => 1,
+    ],
+    'jit' => [
+        'opcache.enable' => 1,
+        'opcache.enable_cli' => 1,
+        'opcache.jit' => 'tracing',
+        'opcache.jit_buffer_size' => '128M',
+        'opcache.memory_consumption' => 128,
+        'opcache.validate_timestamps' => 0,
+        'error_reporting' => 8191,
+        'display_errors' => 1,
+    ],
+    default => throw new InvalidArgumentException('Unknown runtime profile: ' . $runtime),
+};
+
+if (PHP_VERSION !== '8.4.1' && getenv('ROUTER_BENCH_ALLOW_PHP_MISMATCH') !== '1') {
+    fwrite(STDERR, \sprintf(
+        "Official benchmark target is PHP 8.4.1; current runtime is %s. Set ROUTER_BENCH_ALLOW_PHP_MISMATCH=1 for a labeled non-official run.\n",
+        PHP_VERSION,
+    ));
+    exit(2);
+}
+if (\extension_loaded('xdebug')) {
+    fwrite(STDERR, "Xdebug is loaded. Disable it before benchmarking.\n");
+    exit(2);
+}
+if (!\extension_loaded('Zend OPcache') && $runtime !== 'opcache-off') {
+    fwrite(STDERR, "Zend OPcache is required for the selected runtime profile.\n");
+    exit(2);
+}
+
+if (!$skipVerify) {
+    runCommand([PHP_BINARY, '-d', 'error_reporting=8191', $root . '/vendor/bin/phpunit'], $root);
+}
+
+$resultsDirectory = $root . '/results';
+if (!is_dir($resultsDirectory) && !mkdir($resultsDirectory, 0777, true) && !is_dir($resultsDirectory)) {
+    throw new RuntimeException('Unable to create results directory.');
+}
+$runId = gmdate('Ymd-His') . '-' . $mode . '-' . $runtime;
+$prefix = $resultsDirectory . '/' . $runId;
+$offset = (int) (crc32($runId) % 7);
+putenv('ROUTER_BENCH_ORDER_OFFSET=' . $offset);
+
+$environment = EnvironmentCollector::collect($runtimeIni);
+$environment['run'] = [
+    'id' => $runId,
+    'mode' => $mode,
+    'runtime_profile' => $runtime,
+    'official_configuration' => PHP_VERSION === '8.4.1' && $runtime === 'opcache',
+    'router_order_offset' => $offset,
+    'warning' => is_file('/.dockerenv')
+        ? 'Containerized result; do not mix with native host results.'
+        : 'Native host result. Avoid unrelated workloads during measurement.',
+];
+file_put_contents(
+    $prefix . '.environment.json',
+    json_encode($environment, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL,
+    LOCK_EX,
+);
+
+if ($mode === 'memory') {
+    putenv('ROUTER_BENCH_SIZES=' . (getenv('ROUTER_BENCH_SIZES') ?: '10,100,1000,10000'));
+    writeDiagnostics($prefix . '.memory.json', $root . '/bin/memory-worker', array_map(
+        static fn ($adapter): string => $adapter->identity()->name,
+        AdapterRegistry::all(),
+    ), sizes(), $runtimeIni, $root, $environment);
+    runCommand([PHP_BINARY, $root . '/bin/export-diagnostics', $prefix . '.memory.json'], $root);
+    fwrite(STDOUT, "Memory results: {$prefix}.memory.json\n");
+    exit(0);
+}
+
+if ($mode === 'cache') {
+    putenv('ROUTER_BENCH_SIZES=' . (getenv('ROUTER_BENCH_SIZES') ?: '100,1000,10000'));
+    writeCacheDiagnostics(
+        $prefix . '.cache.json',
+        NativeCacheLifecycle::routers(),
+        sizes(),
+        $runtimeIni,
+        $root,
+        $environment,
+    );
+    runCommand([PHP_BINARY, $root . '/bin/export-diagnostics', $prefix . '.cache.json'], $root);
+    fwrite(STDOUT, "Cache results: {$prefix}.cache.json\n");
+    exit(0);
+}
+
+if (!\in_array($mode, ['quick', 'full'], true)) {
+    fwrite(STDERR, "Usage: bin/benchmark [quick|full|memory|cache] [--runtime=opcache|opcache-off|jit]\n");
+    exit(2);
+}
+
+putenv('ROUTER_BENCH_SIZES=' . ($mode === 'quick' ? '100' : '10,100,1000,10000'));
+$paths = $mode === 'quick'
+    ? [
+        'benchmarks/RegistrationBench.php',
+        'benchmarks/CompilationBench.php',
+        'benchmarks/FinalizationBench.php',
+        'benchmarks/ColdStartBench.php',
+        'benchmarks/StaticRoutesBench.php',
+        'benchmarks/OverlappingRoutesBench.php',
+        'benchmarks/DynamicRoutesBench.php',
+        'benchmarks/ConstrainedRoutesBench.php',
+        'benchmarks/MixedRoutesBench.php',
+        'benchmarks/NotFoundBench.php',
+        'benchmarks/MethodNotAllowedBench.php',
+        'benchmarks/Native/NativeDirectCallBench.php',
+    ]
+    : [
+        'benchmarks/RegistrationBench.php',
+        'benchmarks/CompilationBench.php',
+        'benchmarks/FinalizationBench.php',
+        'benchmarks/ColdStartBench.php',
+        'benchmarks/StaticRoutesBench.php',
+        'benchmarks/OverlappingRoutesBench.php',
+        'benchmarks/DynamicRoutesBench.php',
+        'benchmarks/ConstrainedRoutesBench.php',
+        'benchmarks/MixedRoutesBench.php',
+        'benchmarks/NotFoundBench.php',
+        'benchmarks/MethodNotAllowedBench.php',
+        'benchmarks/Native/NativeDirectCallBench.php',
+    ];
+
+$command = [
+    PHP_BINARY,
+    '-d',
+    'error_reporting=8191',
+    $root . '/vendor/bin/phpbench',
+    'run',
+    ...$paths,
+    '--php-config=' . json_encode($runtimeIni, JSON_THROW_ON_ERROR),
+    '--dump-file=' . $prefix . '.xml',
+    '--report=router_summary',
+];
+if ($mode === 'quick') {
+    $command[] = '--iterations=3';
+}
+runCommand($command, $root);
+runCommand([PHP_BINARY, $root . '/bin/export-results', $prefix . '.xml'], $root);
+
+if ($mode === 'full') {
+    writeDiagnostics($prefix . '.memory.json', $root . '/bin/memory-worker', array_map(
+        static fn ($adapter): string => $adapter->identity()->name,
+        AdapterRegistry::all(),
+    ), sizes(), $runtimeIni, $root, $environment);
+    writeCacheDiagnostics(
+        $prefix . '.cache.json',
+        NativeCacheLifecycle::routers(),
+        sizes(),
+        $runtimeIni,
+        $root,
+        $environment,
+    );
+    runCommand([PHP_BINARY, $root . '/bin/export-diagnostics', $prefix . '.memory.json'], $root);
+    runCommand([PHP_BINARY, $root . '/bin/export-diagnostics', $prefix . '.cache.json'], $root);
+}
+
+fwrite(STDOUT, "Raw PHPBench result: {$prefix}.xml\n");
+fwrite(STDOUT, "Environment report: {$prefix}.environment.json\n");
+fwrite(STDOUT, "Markdown, JSON and CSV exports use prefix: {$prefix}\n");
+
+/** @param list<string> $command */
+function runCommand(array $command, string $workingDirectory): void
+{
+    $escaped = implode(' ', array_map(escapeshellarg(...), $command));
+    $previous = getcwd();
+    chdir($workingDirectory);
+    passthru($escaped, $status);
+    if (\is_string($previous)) {
+        chdir($previous);
+    }
+    if ($status !== 0) {
+        exit($status);
+    }
+}
+
+/** @return list<int> */
+function sizes(): array
+{
+    return array_map(
+        static fn (string $size): int => (int) trim($size),
+        explode(',', (string) getenv('ROUTER_BENCH_SIZES')),
+    );
+}
+
+/**
+ * @param list<string> $routers
+ * @param list<int> $datasetSizes
+ * @param array<string, int|string> $ini
+ * @param array<string, mixed> $environment
+ */
+function writeDiagnostics(
+    string $output,
+    string $worker,
+    array $routers,
+    array $datasetSizes,
+    array $ini,
+    string $root,
+    array $environment,
+): void {
+    $rows = [];
+    foreach ($datasetSizes as $size) {
+        foreach ($routers as $router) {
+            $command = [PHP_BINARY];
+            foreach ($ini as $name => $value) {
+                $command[] = '-d';
+                $command[] = $name . '=' . $value;
+            }
+            $command[] = $worker;
+            $command[] = $router;
+            $command[] = (string) $size;
+            $escaped = implode(' ', array_map(escapeshellarg(...), $command));
+            $line = shell_exec('cd ' . escapeshellarg($root) . ' && ' . $escaped);
+            if (!\is_string($line)) {
+                throw new RuntimeException('Diagnostic worker failed for ' . $router);
+            }
+            $rows[] = json_decode(trim($line), true, flags: JSON_THROW_ON_ERROR);
+        }
+    }
+    file_put_contents(
+        $output,
+        json_encode(
+            ['environment' => $environment, 'results' => $rows],
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        ) . PHP_EOL,
+        LOCK_EX,
+    );
+}
+
+/**
+ * Cache generation and cache loading execute in separate fresh PHP processes.
+ *
+ * @param list<string> $routers
+ * @param list<int> $datasetSizes
+ * @param array<string, int|string> $ini
+ * @param array<string, mixed> $environment
+ */
+function writeCacheDiagnostics(
+    string $output,
+    array $routers,
+    array $datasetSizes,
+    array $ini,
+    string $root,
+    array $environment,
+): void {
+    $rows = [];
+    foreach ($datasetSizes as $size) {
+        foreach ($routers as $router) {
+            $cacheFile = sys_get_temp_dir() . '/router-benchmark-cache-'
+                . hash('sha256', $router . '-' . $size . '-' . getmypid()) . '.php';
+            try {
+                $generated = runWorker($root . '/bin/cache-worker', [
+                    'generate',
+                    $router,
+                    (string) $size,
+                    $cacheFile,
+                ], $ini, $root);
+                $loaded = runWorker($root . '/bin/cache-worker', [
+                    'load',
+                    $router,
+                    (string) $size,
+                    $cacheFile,
+                ], $ini, $root);
+                $rows[] = [
+                    'scenario' => 'cache',
+                    'router' => $router,
+                    'size' => $size,
+                    'seed' => \RouterBenchmarks\Dataset\DatasetFactory::DEFAULT_SEED,
+                    'cache_format' => match ($router) {
+                        'Symfony Routing' => 'generated_php_compiled_matcher_array',
+                        default => 'generated_php_return_array',
+                    },
+                    'generation_boundary' => 'router_creation_registration_and_native_cache_generation',
+                    ...$generated,
+                    ...$loaded,
+                ];
+            } finally {
+                if (is_file($cacheFile)) {
+                    unlink($cacheFile);
+                }
+            }
+        }
+    }
+    file_put_contents(
+        $output,
+        json_encode(
+            ['environment' => $environment, 'results' => $rows],
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        ) . PHP_EOL,
+        LOCK_EX,
+    );
+}
+
+/**
+ * @param list<string> $arguments
+ * @param array<string, int|string> $ini
+ * @return array<string, mixed>
+ */
+function runWorker(string $worker, array $arguments, array $ini, string $root): array
+{
+    $command = [PHP_BINARY];
+    foreach ($ini as $name => $value) {
+        $command[] = '-d';
+        $command[] = $name . '=' . $value;
+    }
+    $command[] = $worker;
+    $command = [...$command, ...$arguments];
+    $escaped = implode(' ', array_map(escapeshellarg(...), $command));
+    $line = shell_exec('cd ' . escapeshellarg($root) . ' && ' . $escaped);
+    if (!\is_string($line)) {
+        throw new RuntimeException('Diagnostic worker failed.');
+    }
+    $decoded = json_decode(trim($line), true, flags: JSON_THROW_ON_ERROR);
+    if (!\is_array($decoded)) {
+        throw new RuntimeException('Diagnostic worker returned invalid JSON.');
+    }
+
+    return $decoded;
+}

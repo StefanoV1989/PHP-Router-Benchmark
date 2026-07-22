@@ -1,0 +1,62 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
+$root = \dirname(__DIR__);
+require $root . '/vendor/autoload.php';
+
+if (PHP_VERSION !== '8.4.1' && getenv('ROUTER_BENCH_ALLOW_PHP_MISMATCH') !== '1') {
+    fwrite(STDERR, \sprintf("Verification requires PHP 8.4.1; found %s.\n", PHP_VERSION));
+    exit(1);
+}
+if (!\extension_loaded('Zend OPcache')) {
+    fwrite(STDERR, "Verification requires the Zend OPcache extension.\n");
+    exit(1);
+}
+if ((error_reporting() & (E_DEPRECATED | E_USER_DEPRECATED)) !== 0) {
+    fwrite(STDERR, "Deprecation notices must be disabled for verification and benchmark output.\n");
+    exit(1);
+}
+if ((error_reporting() & (E_WARNING | E_ERROR)) !== (E_WARNING | E_ERROR)) {
+    fwrite(STDERR, "Warnings and fatal errors must remain enabled.\n");
+    exit(1);
+}
+
+$commands = [
+    [PHP_BINARY, $root . '/vendor/bin/phpunit'],
+    [PHP_BINARY, $root . '/vendor/bin/phpstan', 'analyse', '--memory-limit=1G'],
+    [PHP_BINARY, $root . '/vendor/bin/php-cs-fixer', 'fix', '--dry-run', '--diff'],
+];
+
+foreach ($commands as $command) {
+    $escaped = implode(' ', array_map(escapeshellarg(...), $command));
+    passthru($escaped, $status);
+    if ($status !== 0) {
+        fwrite(STDERR, "Verification failed. Benchmarks will not run.\n");
+        exit($status);
+    }
+}
+
+$manifest = json_decode((string) file_get_contents($root . '/router-versions.json'), true, flags: JSON_THROW_ON_ERROR);
+$lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, flags: JSON_THROW_ON_ERROR);
+$locked = [];
+foreach ($lock['packages'] as $package) {
+    $locked[$package['name']] = $package;
+}
+foreach ($manifest['routers'] as $router) {
+    $package = $locked[$router['package']] ?? null;
+    if (!\is_array($package) || ltrim($package['version'], 'v') !== ltrim($router['version'], 'v')) {
+        fwrite(STDERR, \sprintf("Pinned version mismatch for %s.\n", $router['name']));
+        exit(1);
+    }
+    $reference = $package['source']['reference'] ?? $package['dist']['reference'] ?? null;
+    if ($reference !== $router['commit']) {
+        fwrite(STDERR, \sprintf("Pinned commit mismatch for %s.\n", $router['name']));
+        exit(1);
+    }
+}
+
+fwrite(STDOUT, "Verification passed: formatting, tests, PHPStan, versions and commits.\n");

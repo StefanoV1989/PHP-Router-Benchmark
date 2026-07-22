@@ -1,0 +1,61 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use RouterBenchmarks\Dataset\DatasetFactory;
+use RouterBenchmarks\Dataset\RouteKind;
+use RouterBenchmarks\Support\NativeCacheLifecycle;
+
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+require \dirname(__DIR__) . '/vendor/autoload.php';
+
+[$script, $phase, $routerName, $size, $file] = $argv + [null, null, null, null, null];
+if (
+    !\in_array($phase, ['generate', 'load'], true)
+    || !\is_string($routerName)
+    || !is_numeric($size)
+    || !\is_string($file)
+) {
+    fwrite(STDERR, "Usage: cache-worker <generate|load> <router-name> <size> <cache-file>\n");
+    exit(2);
+}
+
+$dataset = DatasetFactory::create((int) $size);
+$target = $dataset->first(RouteKind::MultipleParameters);
+
+if ($phase === 'generate') {
+    $start = hrtime(true);
+    NativeCacheLifecycle::generate($routerName, $dataset, $file);
+    $generationNs = hrtime(true) - $start;
+    clearstatcache(true, $file);
+    $cacheBytes = filesize($file);
+
+    echo json_encode([
+        'generation_ns' => $generationNs,
+        'cache_file_bytes' => \is_int($cacheBytes) ? $cacheBytes : null,
+    ], JSON_THROW_ON_ERROR), PHP_EOL;
+    exit(0);
+}
+
+$start = hrtime(true);
+$loaded = NativeCacheLifecycle::load($routerName, $file, $target->methods[0], $target->samplePath);
+$loadNs = hrtime(true) - $start;
+
+$start = hrtime(true);
+$loaded->dispatch();
+$firstDispatchNs = hrtime(true) - $start;
+
+$iterations = 1_000;
+$start = hrtime(true);
+for ($i = 0; $i < $iterations; ++$i) {
+    $loaded->dispatch();
+}
+$subsequentNs = (hrtime(true) - $start) / $iterations;
+
+echo json_encode([
+    'load_ns' => $loadNs,
+    'first_dispatch_ns' => $firstDispatchNs,
+    'subsequent_dispatch_ns' => $subsequentNs,
+    'subsequent_iterations' => $iterations,
+], JSON_THROW_ON_ERROR), PHP_EOL;

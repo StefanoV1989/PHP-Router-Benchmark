@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+namespace RouterBenchmarks\Benchmarks;
+
+use PhpBench\Attributes\BeforeMethods;
+use PhpBench\Attributes\Iterations;
+use PhpBench\Attributes\ParamProviders;
+use PhpBench\Attributes\Revs;
+use PhpBench\Attributes\Subject;
+use PhpBench\Attributes\Warmup;
+use RouterBenchmarks\Benchmarks\Support\AdapterBenchCase;
+use RouterBenchmarks\Benchmarks\Support\BenchmarkParameters;
+use RouterBenchmarks\Dataset\RouteKind;
+use RouterBenchmarks\Result\DispatchResult;
+
+final class MixedRoutesBench extends AdapterBenchCase
+{
+    /** @return iterable<string, array{router: string, size: int}> */
+    public function provideCases(): iterable
+    {
+        return BenchmarkParameters::combinations();
+    }
+
+    /** @param array{router: string, size: int} $params */
+    public function setUp(array $params): void
+    {
+        $this->createAdapter($params);
+        $this->registerDataset();
+        $this->prepare($this->dataset->first(RouteKind::MultipleParameters));
+        $this->adapter->finalize();
+    }
+
+    #[Subject, BeforeMethods('setUp'), ParamProviders('provideCases'), Revs(500), Iterations(9), Warmup(2)]
+    public function benchWarmFullDispatch(): DispatchResult
+    {
+        return $this->adapter->dispatch($this->request);
+    }
+}

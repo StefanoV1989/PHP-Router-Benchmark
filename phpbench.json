@@ -1,0 +1,28 @@
+{
+    "$schema": "./vendor/phpbench/phpbench/phpbench.schema.json",
+    "runner.bootstrap": "vendor/autoload.php",
+    "runner.path": "benchmarks",
+    "runner.retry_threshold": 5,
+    "report.outputs": {
+        "console": {
+            "extends": "delimited",
+            "delimiter": "|"
+        }
+    },
+    "report.generators": {
+        "router_summary": {
+            "extends": "aggregate",
+            "cols": [
+                "benchmark",
+                "subject",
+                "variant",
+                "revs",
+                "its",
+                "best",
+                "mean",
+                "mode",
+                "rstdev"
+            ]
+        }
+    }
+}

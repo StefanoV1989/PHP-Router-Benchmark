@@ -1,0 +1,36 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use RouterBenchmarks\Result\ResultExporter;
+
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+$root = \dirname(__DIR__);
+require $root . '/vendor/autoload.php';
+
+$input = $argv[1] ?? null;
+if (!\is_string($input)) {
+    $files = glob($root . '/results/*.xml') ?: [];
+    usort($files, static fn (string $left, string $right): int => filemtime($right) <=> filemtime($left));
+    $input = $files[0] ?? null;
+}
+if (!\is_string($input) || !is_file($input)) {
+    fwrite(STDERR, "No PHPBench XML result found. Pass a result path explicitly.\n");
+    exit(2);
+}
+
+$input = realpath($input) ?: $input;
+$prefix = preg_replace('/\.xml$/', '', $input);
+if (!\is_string($prefix)) {
+    throw new RuntimeException('Unable to determine export prefix.');
+}
+$environmentFile = $prefix . '.environment.json';
+$environment = is_file($environmentFile)
+    ? json_decode((string) file_get_contents($environmentFile), true, flags: JSON_THROW_ON_ERROR)
+    : null;
+$exporter = new ResultExporter();
+$rows = $exporter->readPhpBench($input);
+$exporter->writeAll($rows, $prefix, $environment);
+echo $exporter->console($rows, $environment);
+fwrite(STDOUT, "Exported {$prefix}.md, {$prefix}.json and {$prefix}.csv\n");

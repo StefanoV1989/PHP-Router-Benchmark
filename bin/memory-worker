@@ -1,0 +1,56 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use RouterBenchmarks\Contract\Feature;
+use RouterBenchmarks\Dataset\DatasetFactory;
+use RouterBenchmarks\Result\FinalizationStatus;
+use RouterBenchmarks\Support\AdapterRegistry;
+use RouterBenchmarks\Support\BenchmarkHandler;
+
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+require \dirname(__DIR__) . '/vendor/autoload.php';
+
+[$script, $routerName, $size] = $argv + [null, null, null];
+if (!\is_string($routerName) || !is_numeric($size)) {
+    fwrite(STDERR, "Usage: memory-worker <router-name> <size>\n");
+    exit(2);
+}
+
+$dataset = DatasetFactory::create((int) $size);
+$handlers = [];
+foreach ($dataset->routes as $route) {
+    $handlers[$route->id] = BenchmarkHandler::forRoute($route->id);
+}
+gc_collect_cycles();
+memory_reset_peak_usage();
+$baseline = memory_get_usage(false);
+$adapter = AdapterRegistry::byName($routerName);
+$empty = memory_get_usage(false) - $baseline;
+foreach ($dataset->routes as $route) {
+    $adapter->addRoute($route, $handlers[$route->id]);
+}
+$registered = memory_get_usage(false) - $baseline;
+$hasFinalizationPhase = $adapter->supports(Feature::Compilation) || $adapter->supports(Feature::Finalization);
+$status = FinalizationStatus::NotApplicable;
+$finalized = null;
+if ($hasFinalizationPhase) {
+    $adapter->prepareRequest('GET', '/');
+    $status = $adapter->finalize()->status;
+    $finalized = memory_get_usage(false) - $baseline;
+}
+
+echo json_encode([
+    'scenario' => 'memory',
+    'router' => $routerName,
+    'size' => (int) $size,
+    'seed' => $dataset->seed,
+    'empty_bytes' => $empty,
+    'registered_bytes' => $registered,
+    'finalized_bytes' => $finalized,
+    'registration_delta_bytes' => $registered - $empty,
+    'finalization_delta_bytes' => $finalized === null ? null : $finalized - $registered,
+    'finalization_status' => $status->value,
+    'peak_bytes' => memory_get_peak_usage(false) - $baseline,
+], JSON_THROW_ON_ERROR), PHP_EOL;

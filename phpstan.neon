@@ -1,0 +1,14 @@
+parameters:
+    level: 8
+    paths:
+        - src
+        - benchmarks
+        - tests
+        - bin/benchmark
+        - bin/cache-worker
+        - bin/export-diagnostics
+        - bin/export-results
+        - bin/memory-worker
+        - bin/verify
+    tmpDir: .phpstan.cache
+    treatPhpDocTypesAsCertain: false

@@ -1,0 +1,48 @@
+{
+    "generated_at": "2026-07-22",
+    "selection_policy": "latest stable tagged release",
+    "routers": [
+        {
+            "name": "Ariel Radix Router",
+            "package": "stefanov1989/ariel-radix-router",
+            "version": "v1.0.2",
+            "commit": "dacbe9ec2769e1702264c1f4e766d088c2261c0f"
+        },
+        {
+            "name": "Illuminate Routing",
+            "package": "illuminate/routing",
+            "version": "v13.21.1",
+            "commit": "ead1511bfebcb8540c751e73b1321ffaa582e668"
+        },
+        {
+            "name": "Bramus Router",
+            "package": "bramus/router",
+            "version": "1.6.1",
+            "commit": "55657b76da8a0a509250fb55b9dd24e1aa237eba"
+        },
+        {
+            "name": "AltoRouter",
+            "package": "altorouter/altorouter",
+            "version": "2.0.3",
+            "commit": "9931b976423f7334c94f7b5b348be8ab1da3415d"
+        },
+        {
+            "name": "Symfony Routing",
+            "package": "symfony/routing",
+            "version": "v8.1.0",
+            "commit": "fe0bfec72c8a806109fb9c3a5f2b898fe0c76eb3"
+        },
+        {
+            "name": "FastRoute",
+            "package": "nikic/fast-route",
+            "version": "v1.3.0",
+            "commit": "181d480e08d9476e61381e04a71b34dc0432e812"
+        },
+        {
+            "name": "Simple PHP Router",
+            "package": "pecee/simple-router",
+            "version": "5.4.1.7",
+            "commit": "a2843d5b1e037f8b61cc99f27eab52a28bf41dfd"
+        }
+    ]
+}
