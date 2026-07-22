@@ -21,4 +21,7 @@ jobs:
           ROUTER_BENCH_ALLOW_PHP_MISMATCH: '1'
         run: composer benchmark:quick -- --skip-verify
       - name: Discard CI timings
-        run: php -r 'foreach (glob("results/*") ?: [] as $file) { if (is_file($file) && basename($file) !== ".gitkeep") { unlink($file); } }'
+        run: >-
+          php -r 'foreach (glob("results/*") ?: [] as $file) {
+          if (is_file($file) && basename($file) !== ".gitkeep") { unlink($file); }
+          }'
