@@ -1,0 +1,29 @@
+php_version,runtime_profile,execution_environment,opcache_enable,opcache_enable_cli,opcache_jit,opcache_jit_buffer_size,opcache_memory_consumption,opcache_validate_timestamps,error_reporting,scenario,router,size,seed,empty_bytes,registered_bytes,finalized_bytes,registration_delta_bytes,finalization_delta_bytes,finalization_status,peak_bytes
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Ariel Radix Router",10,19890717,2840,81976,105312,79136,23336,compiled,218304
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Illuminate Routing",10,19890717,142064,289032,578288,146968,289256,compiled,1291688
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Bramus Router",10,19890717,4320,18072,,13752,,not_applicable,223952
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,AltoRouter,10,19890717,864,5536,,4672,,not_applicable,172928
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Symfony Routing",10,19890717,2048,77920,114488,75872,36568,compiled,401008
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,FastRoute,10,19890717,1784,9552,22360,7768,12808,compiled,99432
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Simple PHP Router",10,19890717,83408,166152,170688,82744,4536,finalized,308360
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Ariel Radix Router",100,19890717,2840,204112,327744,201272,123632,compiled,396344
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Illuminate Routing",100,19890717,142064,420176,842664,278112,422488,compiled,1422832
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Bramus Router",100,19890717,4320,137864,,133544,,not_applicable,223952
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,AltoRouter,100,19890717,864,45800,,44936,,not_applicable,172928
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Symfony Routing",100,19890717,2048,172232,426016,170184,253784,compiled,601912
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,FastRoute,100,19890717,1784,67880,96464,66096,28584,compiled,165064
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Simple PHP Router",100,19890717,83408,256824,263600,173416,6776,finalized,332200
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Ariel Radix Router",1000,19890717,2840,1348344,2533000,1345504,1184656,compiled,2601600
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Illuminate Routing",1000,19890717,142064,1582656,3446016,1440592,1863360,compiled,6068568
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Bramus Router",1000,19890717,4320,1306272,,1301952,,not_applicable,1378056
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,AltoRouter,1000,19890717,864,355688,,354824,,not_applicable,427472
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Symfony Routing",1000,19890717,2048,1047344,3503536,1045296,2456192,compiled,4304040
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,FastRoute,1000,19890717,1784,617480,800848,615696,183368,compiled,869448
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Simple PHP Router",1000,19890717,83408,1133904,1158600,1050496,24696,finalized,1227200
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Ariel Radix Router",10000,19890717,2840,13588680,25014392,13585840,11425712,compiled,25281416
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Illuminate Routing",10000,19890717,142064,14148432,41442904,14006368,27294472,compiled,65997752
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Bramus Router",10000,19890717,4320,13164728,,13160408,,not_applicable,13236512
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,AltoRouter,10000,19890717,864,4102616,,4101752,,not_applicable,4184408
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Symfony Routing",10000,19890717,2048,10201216,46281944,10199168,36080728,compiled,51643472
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,FastRoute,10000,19890717,1784,6473224,8202288,6471440,1729064,compiled,8406792
+8.4.1,opcache,native_host,1,1,0,0,128,0,8191,memory,"Simple PHP Router",10000,19890717,83408,10080336,10350792,9996928,270456,finalized,10419392

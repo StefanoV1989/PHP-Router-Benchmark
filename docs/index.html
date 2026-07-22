@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PHP Router Benchmark — Reproducible PHP 8.4 Performance Audit</title>
+  <meta name="description" content="A fair, reproducible PHP 8.4 benchmark comparing Ariel Radix Router, FastRoute, Symfony Routing, AltoRouter, Bramus Router, Illuminate Routing and Simple PHP Router.">
+  <meta name="keywords" content="PHP router benchmark, PHP routing performance, FastRoute benchmark, Symfony Routing benchmark, AltoRouter benchmark, Ariel Radix Router">
+  <meta name="author" content="PHP Router Performance Audit contributors">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+  <link rel="canonical" href="https://stefanov1989.github.io/PHP-Router-Benchmark/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="PHP Router Performance Audit">
+  <meta property="og:description" content="Inspect reproducible PHP 8.4 routing benchmarks across 10, 100, 1,000 and 10,000 routes.">
+  <meta property="og:url" content="https://stefanov1989.github.io/PHP-Router-Benchmark/">
+  <meta property="og:site_name" content="PHP Router Performance Audit">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="PHP Router Performance Audit">
+  <meta name="twitter:description" content="Fair, reproducible PHP router results with raw data and documented methodology.">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    "name": "PHP Router Performance Audit",
+    "description": "Reproducible PHP 8.4 router benchmark results for matching, dispatch, registration, compilation, cache lifecycle and memory.",
+    "url": "https://stefanov1989.github.io/PHP-Router-Benchmark/",
+    "license": "https://opensource.org/license/mit",
+    "isAccessibleForFree": true,
+    "datePublished": "2026-07-22",
+    "version": "1.0.0",
+    "keywords": ["PHP", "router", "routing", "benchmark", "performance", "FastRoute", "Symfony Routing", "AltoRouter"],
+    "distribution": [{
+      "@type": "DataDownload",
+      "encodingFormat": "application/json",
+      "contentUrl": "https://github.com/StefanoV1989/PHP-Router-Benchmark/blob/v1.0.0/results/20260722-101702-full-opcache.json"
+    }],
+    "sameAs": "https://github.com/StefanoV1989/PHP-Router-Benchmark"
+  }
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071018;
+      --panel: #0d1822;
+      --panel-2: #111f2b;
+      --text: #ecf4f8;
+      --muted: #9db0be;
+      --line: #253744;
+      --accent: #5ee6a8;
+      --accent-2: #70b7ff;
+      --warning: #ffd580;
+      --max: 1160px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(37, 109, 85, .27), transparent 32rem),
+        radial-gradient(circle at 90% 15%, rgba(44, 101, 156, .18), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent-2); }
+    a:hover { color: #a8d5ff; }
+    .wrap { width: min(calc(100% - 2rem), var(--max)); margin-inline: auto; }
+    header { padding: 1.25rem 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+    nav { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    nav strong { letter-spacing: -.02em; }
+    nav .links { display: flex; flex-wrap: wrap; gap: 1rem; }
+    nav a { color: var(--muted); text-decoration: none; }
+    main { padding-bottom: 5rem; }
+    .hero { padding: clamp(4rem, 10vw, 8rem) 0 4rem; }
+    .eyebrow { color: var(--accent); font-size: .8rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { max-width: 900px; margin: .7rem 0 1.2rem; font-size: clamp(2.8rem, 8vw, 6.4rem); line-height: .98; letter-spacing: -.065em; }
+    h2 { margin: 0 0 1rem; font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -.04em; }
+    h3 { margin-top: 0; }
+    .lede { max-width: 790px; color: var(--muted); font-size: clamp(1.05rem, 2.2vw, 1.3rem); }
+    .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 2rem; }
+    .button { display: inline-block; padding: .78rem 1rem; border: 1px solid var(--line); border-radius: .65rem; background: var(--panel); color: var(--text); font-weight: 700; text-decoration: none; }
+    .button.primary { border-color: var(--accent); background: var(--accent); color: #052016; }
+    section { padding: 3.5rem 0; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .card { padding: 1.35rem; border: 1px solid var(--line); border-radius: 1rem; background: linear-gradient(145deg, var(--panel-2), var(--panel)); }
+    .card .label { color: var(--muted); font-size: .82rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+    .card .value { display: block; margin-top: .3rem; color: var(--accent); font-size: clamp(1.5rem, 4vw, 2.4rem); font-weight: 800; letter-spacing: -.04em; }
+    .card p { margin-bottom: 0; color: var(--muted); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: .85rem; background: var(--panel); }
+    table { width: 100%; border-collapse: collapse; min-width: 710px; }
+    th, td { padding: .85rem 1rem; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+    th { color: var(--muted); font-size: .77rem; letter-spacing: .06em; text-transform: uppercase; }
+    td.number, th.number { text-align: right; font-variant-numeric: tabular-nums; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: rgba(112,183,255,.05); }
+    .winner { color: var(--accent); font-weight: 800; }
+    .note { padding: 1.2rem 1.3rem; border-left: 3px solid var(--warning); background: rgba(255,213,128,.07); color: #f0dfbd; }
+    .method { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+    .method strong { display: block; margin-bottom: .35rem; }
+    .method span { color: var(--muted); }
+    footer { padding: 2rem 0 4rem; border-top: 1px solid var(--line); color: var(--muted); }
+    @media (max-width: 760px) {
+      nav { align-items: flex-start; flex-direction: column; }
+      .grid, .method { grid-template-columns: 1fr; }
+      .hero { padding-top: 4rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav class="wrap" aria-label="Primary navigation">
+      <strong>PHP Router Performance Audit</strong>
+      <div class="links">
+        <a href="#results">Results</a>
+        <a href="#cache-memory">Cache &amp; memory</a>
+        <a href="#methodology">Methodology</a>
+        <a href="https://github.com/StefanoV1989/PHP-Router-Benchmark">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <div class="eyebrow">PHP 8.4.1 · Native host · OPcache enabled</div>
+        <h1>Router performance changes with the workload.</h1>
+        <p class="lede">Seven PHP routing libraries, one deterministic dataset, equivalent handlers, explicit unsupported features, and raw results anyone can inspect or reproduce.</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/StefanoV1989/PHP-Router-Benchmark/blob/main/BENCHMARK_RESULTS.md">Read every result</a>
+          <a class="button" href="https://github.com/StefanoV1989/PHP-Router-Benchmark/tree/main/results">Download raw data</a>
+          <a class="button" href="https://github.com/StefanoV1989/PHP-Router-Benchmark#installation-and-verification">Reproduce the audit</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="results">
+      <div class="wrap">
+        <div class="eyebrow">Normalized full dispatch</div>
+        <h2>Different table sizes, different leaders</h2>
+        <p class="lede">Full dispatch includes parameter extraction and equivalent handler invocation. Requests per second are single-process routing-operation estimates, not HTTP server throughput.</p>
+        <div class="grid" style="margin: 2rem 0">
+          <article class="card">
+            <span class="label">Small tables · 10/100 routes</span>
+            <span class="value">FastRoute</span>
+            <p>Lowest geometric-mean relative latency for the small-table group, narrowly ahead of Symfony Routing.</p>
+          </article>
+          <article class="card">
+            <span class="label">Heavy tables · 1,000/10,000 routes</span>
+            <span class="value">Ariel Radix Router</span>
+            <p>Lowest geometric-mean relative latency for the heavy-table group, followed by Symfony Routing.</p>
+          </article>
+          <article class="card">
+            <span class="label">Full dispatch · all four sizes</span>
+            <span class="value">Ariel Radix Router</span>
+            <p>Lowest geometric-mean relative latency across 10, 100, 1,000 and 10,000 routes for this scenario only.</p>
+          </article>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th class="number">Routes</th><th>Lowest mean time</th><th class="number">Mean ns/op</th><th class="number">Estimated requests/s</th></tr></thead>
+            <tbody>
+              <tr><td class="number">10</td><td class="winner">FastRoute</td><td class="number">1,772.4</td><td class="number">564,193</td></tr>
+              <tr><td class="number">100</td><td class="winner">Symfony Routing</td><td class="number">2,180.9</td><td class="number">458,529</td></tr>
+              <tr><td class="number">1,000</td><td class="winner">Symfony Routing</td><td class="number">2,508.0</td><td class="number">398,724</td></tr>
+              <tr><td class="number">10,000</td><td class="winner">Ariel Radix Router</td><td class="number">2,543.6</td><td class="number">393,150</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="cache-memory">
+      <div class="wrap">
+        <div class="eyebrow">Separate metric families</div>
+        <h2>Cache, lifecycle, and memory tell different stories</h2>
+        <div class="grid">
+          <article class="card"><span class="label">Cache generation &amp; load average</span><span class="value">FastRoute</span><p>Lowest four-size aggregate among routers with a documented compiled-cache lifecycle.</p></article>
+          <article class="card"><span class="label">Subsequent cached dispatch average</span><span class="value">Symfony Routing</span><p>Lowest four-size aggregate after native cache loading and first dispatch.</p></article>
+          <article class="card"><span class="label">Peak memory · 10/100 routes</span><span class="value">FastRoute</span><p>Lowest isolated-process peak for the two small route-table sizes.</p></article>
+          <article class="card"><span class="label">Peak memory · 1,000/10,000 routes</span><span class="value">AltoRouter</span><p>Lowest isolated-process peak for the two larger route-table sizes.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="methodology">
+      <div class="wrap">
+        <div class="eyebrow">Audit boundaries</div>
+        <h2>Correctness before performance</h2>
+        <div class="method">
+          <div class="card"><strong>Equivalent behavior</strong><span>Shared route IDs, parameters, methods, constraints, handlers, and adapter contract tests.</span></div>
+          <div class="card"><strong>Separated costs</strong><span>Registration, compilation, cold start, warm match, dispatch, cache, and memory are never blended.</span></div>
+          <div class="card"><strong>Reproducible inputs</strong><span>Fixed seed 19890717 and deterministic 10, 100, 1,000, and 10,000-route datasets.</span></div>
+        </div>
+        <p class="note" style="margin-top: 1.5rem"><strong>Conflict-of-interest disclosure:</strong> the benchmark author also maintains Ariel Radix Router. Shared datasets, contract tests, raw exports, exact package commits, and reproducible commands are provided so readers can audit both methodology and implementation.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">Run <code>20260722-101702-full-opcache</code> · PHP 8.4.1 · Native host · OPcache enabled · JIT disabled · MIT licensed.</div>
+  </footer>
+</body>
+</html>

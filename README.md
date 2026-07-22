@@ -2,6 +2,8 @@
 
 This repository compares standalone PHP routers under shared, inspectable workloads. It measures route registration, compilation or finalization, cold start, handler-free matching, full dispatch, cache lifecycle, and memory. It intentionally does not calculate an overall winner: the scenarios measure different costs and should be interpreted independently.
 
+**[Read the elaborated benchmark results](BENCHMARK_RESULTS.md)** · **[Open the benchmark website](https://stefanov1989.github.io/PHP-Router-Benchmark/)** · [Inspect the official raw run](results/20260722-101702-full-opcache.md)
+
 > **Conflict-of-interest disclosure**
 >
 > “The benchmark author is also the author of Ariel Radix Router. The benchmark is structured around shared datasets, adapter contract tests and reproducible commands to reduce bias. Readers are encouraged to inspect the adapters and reproduce the results.”
