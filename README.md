@@ -16,13 +16,13 @@ The lock file pins the latest stable releases selected on 2026-07-22. `router-ve
 
 | Router | Composer package | Version | Upstream commit |
 |---|---|---:|---|
-| Ariel Radix Router | `stefanov1989/ariel-radix-router` | v1.0.2 | `dacbe9ec2769e1702264c1f4e766d088c2261c0f` |
-| Illuminate Routing | `illuminate/routing` | v13.21.1 | `ead1511bfebcb8540c751e73b1321ffaa582e668` |
-| Bramus Router | `bramus/router` | 1.6.1 | `55657b76da8a0a509250fb55b9dd24e1aa237eba` |
-| AltoRouter | `altorouter/altorouter` | 2.0.3 | `9931b976423f7334c94f7b5b348be8ab1da3415d` |
-| Symfony Routing | `symfony/routing` | v8.1.0 | `fe0bfec72c8a806109fb9c3a5f2b898fe0c76eb3` |
-| FastRoute | `nikic/fast-route` | v1.3.0 | `181d480e08d9476e61381e04a71b34dc0432e812` |
-| Simple PHP Router | `pecee/simple-router` | 5.4.1.7 | `a2843d5b1e037f8b61cc99f27eab52a28bf41dfd` |
+| [Ariel Radix Router](https://github.com/StefanoV1989/ariel-radix-router) | `stefanov1989/ariel-radix-router` | v1.0.2 | `dacbe9ec2769e1702264c1f4e766d088c2261c0f` |
+| [Illuminate Routing](https://github.com/illuminate/routing) | `illuminate/routing` | v13.21.1 | `ead1511bfebcb8540c751e73b1321ffaa582e668` |
+| [Bramus Router](https://github.com/bramus/router) | `bramus/router` | 1.6.1 | `55657b76da8a0a509250fb55b9dd24e1aa237eba` |
+| [AltoRouter](https://github.com/dannyvankooten/AltoRouter) | `altorouter/altorouter` | 2.0.3 | `9931b976423f7334c94f7b5b348be8ab1da3415d` |
+| [Symfony Routing](https://symfony.com/doc/current/routing.html) | `symfony/routing` | v8.1.0 | `fe0bfec72c8a806109fb9c3a5f2b898fe0c76eb3` |
+| [FastRoute](https://github.com/nikic/FastRoute) | `nikic/fast-route` | v1.3.0 | `181d480e08d9476e61381e04a71b34dc0432e812` |
+| [Simple PHP Router](https://github.com/skipperbent/simple-php-router) | `pecee/simple-router` | 5.4.1.7 | `a2843d5b1e037f8b61cc99f27eab52a28bf41dfd` |
 
 Do not run `composer update` when reproducing an existing result. A release-refresh change must update both locked dependencies and `router-versions.json`, rerun all verification, and be reviewed as a new comparison.
 
